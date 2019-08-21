@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>按需加载ztree树-无限层级返回</title>
+    <!--zTree树 CSS-->
+	<link rel="stylesheet" href="./zTree/css/zTreeStyle/zTreeStyle.css">
+    <link rel="stylesheet" href="./zTree/css/demo.css">
+    
+    <!-- 引入ztree树 JS-->
+    <script type="text/javascript" src="./zTree/jquery-1.4.4.min.js"></script>
+	<script type="text/javascript" src="./zTree/jquery.ztree.core.js"></script>
+	<script type="text/javascript" src="./zTree/jquery.ztree.excheck.js"></script>
+</head>
+<body>
+
+    <div class="">
+        <ul id="editztree" class="ztree" style='display: block; -moz-user-select:none'></ul>
+    </div>
+
+    <script>
+        var ArrayName = [];//用于临时存储层级字符串
+        var result = '';//用于拼接层级代码
+        var chooseName = [];//这个是保存选中的层级字符串的数组
+        var ArrayId = [];//这个是保存选中的ID的数组
+        ztreeFn();//这里根据自己的实际项目情况触发
+        function ztreeFn() {
+            var setting = {
+                async: {
+                    enable: true,
+                    type: "get",
+                    // url: "http://",//【这里是放置异步请求的地址】
+                    autoParam: ["id=ParentID"],//异步加载时需要自动提交父节点属性的参数。【这里请根据自己的项目要求替换】
+                    otherParam: {//Ajax 请求提交的静态参数键值对。【这里请根据自己的项目要求替换】
+                        "DBSN": "BS_BMYC"
+                    },
+                    dataFilter: dataFilter//用于对 Ajax 返回数据进行预处理的函数
+                },
+                check: {
+                    enable: true,//设置 zTree 的节点上是否显示 checkbox / radio
+                    autoCheckTrigger: true//设置自动关联勾选时是否触发 beforeCheck / onCheck 事件回调函数。
+                },
+                data: {
+                    simpleData: {
+                        enable: true //确定 zTree 初始化时的节点数据、异步加载时的节点数据、或 addNodes 方法中输入的 newNodes 数据是否采用简单数据模式 (Array)【这个挺有用，详细的使用说明看官网，有案例，这里我没有使用】
+                    }
+                },
+                callback: {//回调函数
+                    onCheck: onCheck,//用于捕获 checkbox / radio 被勾选 或 取消勾选的事件回调函数
+                    onAsyncSuccess: onAsyncSuccess,//用于捕获异步加载正常结束的事件回调函数
+                    onExpand: zTreeOnExpand//用于捕获节点被展开的事件回调函数
+                }
+            };
+
+            function dataFilter(treeId, parentNode, childNodes) {
+                if(parentNode) {
+                    for(var i = 0, l = childNodes.length; i < l; i++) {
+                        childNodes[i].id = childNodes[i].UGoodsSortID;
+                        childNodes[i].name = childNodes[i].UGoodsSortName;
+                        childNodes[i].code = childNodes[i].UGoodsSortCode;
+                        childNodes[i].checked = parentNode.checked;
+                        childNodes[i].isParent = true;
+                        childNodes[i].halfCheck = false;
+                        childNodes[i].checkedEx = false;
+                    }
+                }
+                return childNodes;
+            };
+
+            function onCheck(event, treeId, treeNode) {//这里很有趣，每一次返回的treeNode，点击父类先遍历子类，点击子类先遍历父类，最后才返回我们点击的当前节点
+                //console.log(event);
+                console.log(treeNode);
+                console.log(treeNode.checked);
+                
+                // -1[不存在子节点 或 子节点全部设置为 nocheck = true]
+                // 0[无 子节点被勾选]
+                // 1[部分 子节点被勾选]
+                // 2[全部 子节点被勾选]
+                //【这里是核心，我们的数据根据这里的状态进行绑定，删除】另外，radio的时候没有1的状态
+                console.log(treeNode.check_Child_State) 
+                try {
+                    treeNode.getPath().forEach(function(item, index, arr) {
+                        if(arr[index].UGoodsSortID !== treeNode.UGoodsSortID && arr[index].open == false) {//这是公司具体业务需求，这样就不会遍历到没有打开的子数据（可根据具体业务要求删改）
+                            throw new Error('erro');
+                        };
+                    });
+                } catch(e) {
+                    if(e.message = 'erro') {
+                        return false;
+                    };
+                };
+                if(treeNode.level == 0) { //点击祖父类节点
+                    _BusinessProcess(treeNode);//业务处理
+                } else { //点击普通节点
+                    if(treeNode.open || treeNode.getParentNode().open) { //判断是否打开,打开的就加【这是是公司具体业务需求，不打开的时候就不自动添加子数据，哪怕已经加载过的】（可根据具体业务要求删改）
+                        _BusinessProcess(treeNode);//业务处理
+                    };
+                };
+            };
+
+            //自定义业务处理
+            function _BusinessProcess(treeNode){
+                if(treeNode.checked) {//判断是否为选中
+                    if(treeNode.check_Child_State == -1 || treeNode.check_Child_State == 2) {
+                        if($.inArray(treeNode.UGoodsSortID, ArrayId) == -1) {//先过滤重复添加的数据
+                            treeNode.getPath().forEach(function(item, index, arr) {
+                                ArrayName.push(arr[index].UGoodsSortName);
+                            });
+                            result += ArrayName.join('/');//这里是设置返回的字符串拼接格式
+                            chooseName.push(result);
+                            ArrayId.push(treeNode.UGoodsSortID);
+                            console.log(chooseName, ArrayId);
+                            ArrayName = [];
+                            result = '';
+                        };
+                    };
+                } else {//当取消选中时，删除之前选中的数据
+                    var indexValue = $.inArray(treeNode.UGoodsSortID, ArrayId);
+                    ArrayId.splice(indexValue, 1);
+                    chooseName.splice(indexValue, 1);
+                    console.log(chooseName, ArrayId);
+                };
+            };
+
+            function onAsyncSuccess(event, treeId, treeNode, msg) {
+                cancelHalf(treeNode);
+            };
+            
+            function zTreeOnExpand(event, treeId, treeNode){
+                // console.log('zTreeOnExpand', treeNode);
+                if(treeNode.checked) {
+                    var treeObj = $.fn.zTree.getZTreeObj("editztree");
+                    treeObj.checkNode(treeNode, true, true,true);
+                };
+            };
+
+            function cancelHalf(treeNode) {
+                if(treeNode.checkedEx) return;
+                var zTree = $.fn.zTree.getZTreeObj("editztree");
+                treeNode.halfCheck = false;
+                zTree.updateNode(treeNode);
+            };
+
+            var reconsitution = [];
+            //这里是数据入口，按照项目具体需求更改这里的数据绑定
+            var testData = [{"UGoodsSortID":"8","UGoodsSortCode":"1124","UGoodsSortName":"1124"},{"UGoodsSortID":"13","UGoodsSortCode":"sdfasdf","UGoodsSortName":"飞洒地方"},{"UGoodsSortID":"20","UGoodsSortCode":"test1","UGoodsSortName":"test1"},{"UGoodsSortID":"21","UGoodsSortCode":"test2","UGoodsSortName":"test2"}];
+            testData.forEach(function(item) {
+                console.log(item);
+                reconsitution.push({//zTree数据必须转换成id,name,code格式
+                    id: item.UGoodsSortID,
+                    name: item.UGoodsSortName,
+                    code: item.UGoodsSortCode,
+                    UGoodsSortID: item.UGoodsSortID,
+                    UGoodsSortName: item.UGoodsSortName,
+                    UGoodsSortCode: item.UGoodsSortCode,
+                    halfCheck: false,
+                    isParent: true
+                });
+
+            });
+            var zNodes = reconsitution;
+        
+
+            $(document).ready(function() {
+                $.fn.zTree.init($("#editztree"), setting, zNodes);//zTree 初始化方法，创建 zTree 必须使用此方法
+            });
+        };
+    </script>
+</body>
+</html>
